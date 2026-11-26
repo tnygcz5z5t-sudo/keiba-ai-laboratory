@@ -36,3 +36,4 @@ jobs:
           path: |
             data/extracted_text/
             data/past_performances.csv
+            data/past_runs.csv
