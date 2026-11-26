@@ -17,10 +17,18 @@ def split_horses(text):
     for line in lines:
         stripped = line.strip()
 
+        # レース概要が始まったら終了
+        if stripped in ("展", "展開予想", "netkeiba"):
+            if current:
+                sections.append(current)
+                current = []
+            break
+
         if HORSE_MARKER.match(stripped):
             if current:
                 sections.append(current)
             current = [stripped]
+
         elif current:
             current.append(stripped)
 
@@ -39,7 +47,13 @@ def split_horses(text):
         if len(content) < 2:
             continue
 
-        sire = content[0]
+        # 父馬名から性齢・毛色を除去
+        sire = re.sub(
+            r"\s+(牡|牝|セ)\d+.*$",
+            "",
+            content[0]
+        )
+
         horse_name = content[1]
 
         horses.append({
