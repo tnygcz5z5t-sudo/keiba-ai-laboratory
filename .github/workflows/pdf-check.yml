@@ -9,24 +9,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install libraries
-        run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-      - name: Run PDF loader
-        run: python src/pdf_loader.py
+      - name: Extract PDF text
+        run: |
+          python src/pdf_loader.py
 
-      - name: Save extracted text
+      - name: Parse PDF text
+        run: |
+          python src/pdf_parser.py
+
+      - name: Upload extracted data
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: extracted-pdf-text
-          path: data/extracted_text/
-          if-no-files-found: warn
+          name: pdf-parsed-data
+          path: |
+            data/extracted_text/
+            data/past_performances.csv
