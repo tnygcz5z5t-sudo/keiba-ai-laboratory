@@ -1,0 +1,32 @@
+
+name: Keiba AI PDF Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pdf-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      - name: Run PDF loader
+        run: python src/pdf_loader.py
+
+      - name: Save extracted text
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: extracted-pdf-text
+          path: data/extracted_text/
+          if-no-files-found: warn
