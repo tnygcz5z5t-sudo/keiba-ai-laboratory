@@ -1,0 +1,38 @@
+
+name: Keiba AI Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "Research theme"
+        required: true
+        default: "競走馬の強さを構成する能力とは何か"
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      - name: Run AI-01
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEARCH_THEME: ${{ inputs.theme }}
+        run: python agent.py
+
+      - name: Save research report
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI01-research-report
+          path: reports/
