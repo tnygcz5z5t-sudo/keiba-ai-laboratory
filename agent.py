@@ -1,117 +1,151 @@
 
 import os
-import json
-from datetime import datetime
+import time
+from datetime import datetime, timezone
+
 from google import genai
-from google.genai import types
+from google.genai import errors
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
-SYSTEM_PROMPT = """
-あなたは競馬AI研究所のAI-01「能力研究AI」です。
+API_KEY = os.getenv("GEMINI_API_KEY")
 
-あなたの使命は、競走馬の強さを構成する能力を研究し、
-既存の競馬理論にとらわれない新しい仮説を発見することです。
+MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+]
 
-研究上の基本方針：
+if not API_KEY:
+    raise RuntimeError("GEMINI_API_KEY が設定されていません。")
 
-1. 常識をそのまま正解としない。
-2. 独自の仮説を立てる。
-3. 仮説を支持する根拠を説明する。
-4. 仮説を否定できる条件も考える。
-5. 検証に必要なデータを具体的に示す。
-6. データがない場合は事実のように断定しない。
-7. 相関関係と因果関係を区別する。
-8. 過去の理論が間違っている可能性も検討する。
+client = genai.Client(api_key=API_KEY)
 
-特に次の能力を研究対象とする。
+theme = os.getenv(
+    "RESEARCH_THEME",
+    "競走馬の強さを構成する能力とは何か"
+)
 
-・基礎スピード
-・最高速度
-・加速力
-・持続力
-・ロングスパート能力
-・乳酸抵抗力
+system_prompt = """
+あなたは競走馬の能力を科学的に研究する専門AIです。
 
-これら以外の能力を発見した場合も積極的に提案する。
+単なる一般論ではなく、検証可能な仮説を立ててください。
 
-研究結果は以下の形式で提出する。
+特に以下の能力を独立して考察してください。
+
+1. 基礎スピード
+2. 最高速度
+3. 加速力
+4. 持続速度
+5. 乳酸抵抗力
+6. 心肺機能
+7. 馬場適性
+8. ペース適性
+
+基礎スピードとは、追走時に脚を温存できる速度水準です。
+乳酸抵抗力とは、高い負荷を受けた後も速度を維持する能力です。
+
+以下の構成で研究レポートを作成してください。
 
 【研究テーマ】
 【研究目的】
-【独自の仮説】
+【仮説】
 【仮説の根拠】
-【既存理論との違い】
-【検証に必要なデータ】
+【必要なデータ】
 【検証方法】
-【仮説が否定される条件】
+【仮説が間違いとなる条件】
 【現時点での結論】
 【次に研究すべきこと】
 
-推測と確認済みの事実を明確に区別すること。
+データがない場合は、事実のように断定せず、
+仮説と確認済みの事実を明確に区別してください。
 """
 
-def research(theme):
+prompt = f"""
+{system_prompt}
 
-    api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEYが設定されていません")
-
-    client = genai.Client(api_key=api_key)
-
-    prompt = f"""
 今回の研究テーマ：
 {theme}
 
-このテーマについて独立した研究を行い、
-具体的な仮説と検証計画を提出してください。
+既存の考え方にとらわれず、新しい能力指標も探してください。
 """
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.7,
-            max_output_tokens=3000
-        )
+
+def generate_with_retry():
+    last_error = None
+
+    for model in MODELS:
+        print(f"\nモデルを使用します: {model}", flush=True)
+
+        for attempt in range(3):
+            try:
+                print(
+                    f"生成試行 {attempt + 1}/3",
+                    flush=True
+                )
+
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                )
+
+                if not response.text:
+                    raise RuntimeError("AIから空の回答が返されました。")
+
+                print("研究レポートの生成に成功しました。", flush=True)
+                return response.text, model
+
+            except errors.APIError as e:
+                last_error = e
+                code = getattr(e, "code", None)
+
+                print(
+                    f"APIエラー: code={code}, {e}",
+                    flush=True
+                )
+
+                if code not in (429, 500, 502, 503, 504):
+                    raise
+
+                if attempt < 2:
+                    wait = 5 * (2 ** attempt)
+                    print(f"{wait}秒待って再試行します。", flush=True)
+                    time.sleep(wait)
+
+            except Exception as e:
+                last_error = e
+                print(f"予期しないエラー: {e}", flush=True)
+                raise
+
+        print(f"{model} での生成に失敗しました。", flush=True)
+
+    raise RuntimeError(
+        f"すべてのモデルで生成に失敗しました: {last_error}"
     )
-
-    if not response.text:
-        raise RuntimeError("AIから回答を取得できませんでした")
-
-    return response.text
 
 
 def main():
+    print("================================")
+    print("  KEIBA AI RESEARCH LAB")
+    print("================================")
+    print(f"研究テーマ: {theme}")
 
-    theme = os.getenv(
-        "RESEARCH_THEME",
-        "競走馬の強さを構成する能力とは何か"
-    )
-
-    print("=" * 50)
-    print("KEIBA AI LABORATORY")
-    print("AI-01 能力研究AI")
-    print("=" * 50)
-
-    result = research(theme)
+    report, used_model = generate_with_retry()
 
     os.makedirs("reports", exist_ok=True)
 
-    filename = datetime.now().strftime(
-        "reports/AI01_%Y%m%d_%H%M%S.md"
+    timestamp = datetime.now(timezone.utc).strftime(
+        "%Y%m%d_%H%M%S"
     )
 
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("# AI-01 研究報告\n\n")
-        f.write(f"研究テーマ：{theme}\n\n")
-        f.write(result)
+    filename = f"reports/AI01_{timestamp}.md"
 
-    print("\n研究完了！")
-    print(result)
-    print("\n保存先:", filename)
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write("# AI-01 能力研究レポート\n\n")
+        file.write(f"研究テーマ: {theme}\n\n")
+        file.write(f"使用モデル: {used_model}\n\n")
+        file.write(report)
+
+    print("\n研究レポートを保存しました。")
+    print(filename)
 
 
 if __name__ == "__main__":
