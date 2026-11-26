@@ -1,30 +1,47 @@
 
-name: Keiba AI Data Check
+name: Keiba AI PDF Check
 
 on:
   workflow_dispatch:
 
 jobs:
-  data-check:
+  pdf-check:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install libraries
-        run: pip install pandas numpy
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-      - name: Run data loader
-        run: python src/data_loader.py
+      - name: Extract PDF text
+        run: |
+          python src/pdf_loader.py
 
-      - name: Save processed data
+      - name: Parse PDF text
+        run: |
+          python src/pdf_parser.py
+
+      - name: Parse past runs
+        run: |
+          python src/past_run_parser.py
+
+      - name: Validate past run data
+        run: |
+          python src/data_validator.py
+
+      - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
-          name: research-data
-          path: data/research_data.csv
+          name: pdf-parsed-data
+          path: |
+            data/extracted_text/
+            data/past_performances.csv
+            data/past_runs.csv
