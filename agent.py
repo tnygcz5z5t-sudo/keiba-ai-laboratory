@@ -1,210 +1,179 @@
 
 import os
 import time
-from datetime import datetime, timezone
-
+from datetime import datetime
+from pathlib import Path
 from google import genai
-from google.genai import errors
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-
+# 使用モデル
 MODELS = [
     "gemini-3.8-flash",
     "gemini-3.5-flash-lite",
 ]
 
-if not API_KEY:
-    raise RuntimeError("GEMINI_API_KEY が設定されていません。")
+client = genai.Client(
+    api_key=os.environ["GEMINI_API_KEY"]
+)
 
-client = genai.Client(api_key=API_KEY)
+theme = os.getenv(
+    "RESEARCH_THEME",
+    "基礎スピードと減速耐性を分離する実証モデルの設計"
+)
 
-theme = """
-競走成績データから競走馬の能力をどこまで独立して評価できるか。
+prompt = """
+あなたは競走馬の能力評価モデルを研究する専門AIです。
 
-既存の研究成果を再検討し、基礎スピード、乳酸抵抗力、
-持続速度、EER、DCSMの関係を明らかにせよ。
-"""
+今回は第3次研究です。
+過去の研究で得られた以下の結論を引き継いでください。
 
-system_prompt = """
-あなたは競走馬の能力を研究する専門研究AIです。
-今回は第2次研究を担当します。
+【これまでの研究で確定した方針】
 
-【研究所の基本方針】
+1. 基礎スピード
+基礎スピードとは、追走したときに脚を溜められる速度水準である。
+単純な最高速度や前半の速さではない。
+また、レース後半に減速しないことを定義に含めてはいけない。
 
-研究の中心は、実際に入手可能な競馬データです。
+2. 乳酸抵抗力
+高負荷を受けた後でも速度を維持する能力という仮説。
+ただし、競走データだけで生理学的な乳酸処理能力を直接測定することはできない。
 
-使用を想定するデータ：
-・レース全体のラップタイム
-・走破タイム
+3. 減速耐性
+競走データから観測できる減速のしにくさを示す指標。
+乳酸抵抗力と同一視してはいけない。
+騎手、馬場、展開、距離、進路、接触などの影響を考慮する必要がある。
+
+4. レースラップ
+通常は先頭馬のレース全体のラップであり、各馬個別のラップではない。
+各馬の個別ラップとして扱ってはいけない。
+
+5. 個別ラップの推定
+通過順位や着差から推定する場合、観測値と推定値を明確に区別する。
+スプライン補間などで得られた値を実測値と扱ってはいけない。
+
+6. EERとDCSM
+EERは現状の公開競走データだけでは独立した能力として識別しにくい。
+DCSMは従来の式に次元上の問題があるため、現段階では採用しない。
+無理に数式を作る必要はない。
+
+【今回の研究テーマ】
+
+基礎スピードと減速耐性を、実際の競走データから分離して数値化する方法を設計せよ。
+
+【研究課題】
+
+第1課題：
+基礎スピードを数値化するための具体的な指標を提案する。
+「追走時に脚を溜められる速度水準」という定義を維持すること。
+後半の減速結果を基礎スピードの定義に混ぜないこと。
+
+第2課題：
+基礎スピードと減速耐性が混同されない統計モデルを設計する。
+どの変数を説明変数・目的変数にするか明確にすること。
+
+第3課題：
+利用可能なデータを整理する。
+候補は以下のとおり。
+・レース全体のラップ
 ・距離
-・コース
+・競馬場
+・芝・ダート
 ・馬場状態
 ・通過順位
-・着順
+・コーナー順位
+・着差
+・走破タイム
 ・斤量
 ・頭数
-・ペース
+・ペース情報
 
-取得できない生理学的データを事実として扱ってはいけません。
+それぞれについて、
+実測値・推定値・取得困難な値に分類すること。
 
-【重要な能力の定義】
+第4課題：
+個別馬の速度を推定する場合、
+どの程度の精度が期待できるか検討する。
+データから特定できない部分は、特定できないと明記すること。
 
-基礎スピード：
-一定のペースで追走したときに、どれだけ余力を残せる速度水準。
-単純な最高速度とは異なる。
+第5課題：
+最初に実装するべき最小モデルを提案する。
+複雑なモデルよりも、少ないデータで検証可能なモデルを優先すること。
 
-乳酸抵抗力：
-厳しい追走や高負荷によって大きな負担を受けた後も、
-速度を維持できる能力。
-基礎スピードとは独立した能力として検討する。
+第6課題：
+モデルの有効性を検証する方法を提案する。
+・比較対象となる単純モデル
+・検証用データの分割方法
+・評価指標
+・仮説が否定される条件
+を具体的に示すこと。
 
-持続速度：
-高い速度を一定時間維持する能力。
+第7課題：
+最終的に競走馬の能力を評価するために、
+基礎スピードと減速耐性をどのように別々のスコアにするか提案する。
 
-EER：
-弾性エネルギー回生率。
-現時点では仮説的な指標であり、
-通常の競走成績データから直接測定できるとは限らない。
+【厳守事項】
 
-DCSM：
-動的臨界速度マージン。
-環境や負荷に対する速度維持の余裕を表す仮説的指標。
-計算方法を具体的に提案すること。
-
-【今回の研究課題】
-
-1. 基礎スピードと持続速度の違いを明確に定義する。
-
-2. 基礎スピードと乳酸抵抗力が独立した能力なのか検討する。
-
-3. EERが既存の能力では説明できない情報を持つか検討する。
-
-4. DCSMの具体的な計算式を提案する。
-   変数、単位、必要なデータ、計算手順を示す。
-
-5. レースラップ、走破タイム、通過順位、
-   馬場状態などを用いた検証方法を設計する。
-
-6. 各仮説が間違いだと判断できる条件を設定する。
-
-【研究上の禁止事項】
-
-・データがないのに数値を捏造しない。
+・根拠のない数値を作らない。
+・実測値と推定値を混同しない。
 ・相関関係を因果関係と断定しない。
-・基礎スピードと乳酸抵抗力を混同しない。
-・EERやDCSMを実証済みの能力として扱わない。
-・レース全体のラップを個々の馬のラップと混同しない。
-・既存理論に無理に新しい名前を付けない。
-・検証できない仮説は検証困難と明記する。
+・データから識別できない能力を無理に数値化しない。
+・数式を提示する場合は、変数の意味と単位を明記する。
+・数式の次元が一致しているか確認する。
+・都合のよい結論に誘導しない。
+・既存の競馬理論をそのまま正解として採用しない。
+・実際にデータを検証していない場合、検証済みと表現しない。
 
-【レポート構成】
+最後に、今回の研究で確定できたこと、
+仮説として残ること、
+今後の研究課題を分けて報告すること。
 
-第1章：今回の研究目的
-
-第2章：既存能力の定義と問題点
-
-第3章：基礎スピードと持続速度の独立性
-
-第4章：基礎スピードと乳酸抵抗力の独立性
-
-第5章：EERの独立性と検証可能性
-
-第6章：DCSMの計算式と推定方法
-
-第7章：実際の競馬データを使った検証設計
-
-第8章：仮説の反証条件
-
-第9章：研究上の限界
-
-第10章：次に研究すべき課題
-
-最後に、各仮説を以下の3段階で評価する。
-
-A：競馬データで検証可能
-B：追加データがあれば検証可能
-C：現時点では検証困難
-
-研究者として批判的かつ客観的に考察してください。
-"""
-
-prompt = f"""
-{system_prompt}
-
-今回の研究テーマ：
-{theme}
-
-これは第2次研究です。
-前回の研究を無条件に肯定せず、問題点を発見して改善してください。
-"""
+研究テーマ：
+""" + theme
 
 
-def generate_report():
+def run_research():
     last_error = None
 
     for model in MODELS:
-        print(f"使用モデル: {model}", flush=True)
-
         for attempt in range(3):
             try:
-                print(
-                    f"生成試行 {attempt + 1}/3",
-                    flush=True
-                )
+                print(f"使用モデル: {model}")
+                print(f"試行回数: {attempt + 1}")
 
                 response = client.models.generate_content(
                     model=model,
-                    contents=prompt,
+                    contents=prompt
                 )
 
-                if not response.text:
-                    raise RuntimeError("AIの回答が空です。")
+                report = response.text
 
-                return response.text, model
+                if not report:
+                    raise RuntimeError("AIから空の回答が返されました")
 
-            except errors.APIError as e:
-                last_error = e
-                code = getattr(e, "code", None)
+                output_dir = Path("reports")
+                output_dir.mkdir(exist_ok=True)
 
-                print(f"APIエラー: {e}", flush=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_file = output_dir / f"AI01_Research03_{timestamp}.md"
 
-                if code not in (429, 500, 502, 503, 504):
-                    raise
+                output_file.write_text(
+                    f"# AI-01 第3次研究レポート\n\n"
+                    f"使用モデル：{model}\n\n"
+                    f"{report}",
+                    encoding="utf-8"
+                )
 
-                if attempt < 2:
-                    wait = 5 * (2 ** attempt)
-                    print(f"{wait}秒後に再試行します。", flush=True)
-                    time.sleep(wait)
+                print(f"研究レポート保存完了: {output_file}")
+                return
+
+            except Exception as error:
+                last_error = error
+                print(f"エラー: {error}")
+                time.sleep(5)
 
     raise RuntimeError(
-        f"すべてのモデルで失敗しました: {last_error}"
+        f"すべてのモデルで研究に失敗しました: {last_error}"
     )
-
-
-def main():
-    print("================================")
-    print(" KEIBA AI RESEARCH LAB")
-    print(" 第2次研究")
-    print("================================")
-
-    report, model = generate_report()
-
-    os.makedirs("reports", exist_ok=True)
-
-    timestamp = datetime.now(timezone.utc).strftime(
-        "%Y%m%d_%H%M%S"
-    )
-
-    filename = f"reports/AI01_Research02_{timestamp}.md"
-
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("# AI-01 第2次研究レポート\n\n")
-        f.write(f"使用モデル：{model}\n\n")
-        f.write(report)
-
-    print("研究レポートを保存しました。", flush=True)
-    print(filename, flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    run_research()
