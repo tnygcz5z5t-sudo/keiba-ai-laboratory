@@ -33,6 +33,10 @@ jobs:
         run: |
           python src/past_run_parser.py
 
+      - name: Validate past run data
+        run: |
+          python src/data_validator.py
+
       - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
