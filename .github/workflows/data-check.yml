@@ -1,0 +1,30 @@
+
+name: Keiba AI Data Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  data-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install libraries
+        run: pip install pandas numpy
+
+      - name: Run data loader
+        run: python src/data_loader.py
+
+      - name: Save processed data
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-data
+          path: data/research_data.csv
