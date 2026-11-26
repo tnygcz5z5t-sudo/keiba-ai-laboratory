@@ -29,6 +29,10 @@ jobs:
         run: |
           python src/pdf_parser.py
 
+      - name: Parse past runs
+        run: |
+          python src/past_run_parser.py
+
       - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
