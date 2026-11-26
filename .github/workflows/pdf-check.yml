@@ -37,6 +37,10 @@ jobs:
         run: |
           python src/data_validator.py
 
+      - name: Calculate speed features
+        run: |
+          python src/speed_feature.py
+
       - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
@@ -45,3 +49,5 @@ jobs:
             data/extracted_text/
             data/past_performances.csv
             data/past_runs.csv
+            data/speed_features.csv
+            data/horse_speed_summary.csv
