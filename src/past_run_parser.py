@@ -35,7 +35,7 @@ def split_horses(text):
     horses = []
 
     for section in sections:
-        content = [line.strip() for line in section[1:] if line.strip()]
+        content = [x.strip() for x in section[1:] if x.strip()]
 
         if len(content) < 2:
             continue
@@ -45,7 +45,7 @@ def split_horses(text):
         horses.append({
             "horse_name": content[1],
             "sire": sire,
-            "raw_text": "\n".join(section)
+            "raw_text": section
         })
 
     return horses
@@ -64,6 +64,14 @@ def split_races(lines):
             current = [stripped]
 
         elif current:
+            # 休養・鉄砲・2走目の情報は過去走ブロックから除外
+            if (
+                re.search(r"\d+ヵ月休養", stripped)
+                or stripped.startswith("鉄砲")
+                or stripped.startswith("2走目")
+            ):
+                continue
+
             if re.search(r"^\d+月\d+日生まれ", stripped):
                 blocks.append(current)
                 current = []
@@ -99,6 +107,35 @@ def parse_race(block, horse, source_file):
         else:
             race_class = extra
 
+    # レース名とクラス情報
+    race_name = ""
+    class_info = ""
+
+    if len(block) > 1:
+        info_line = block[1]
+
+        # 例：札幌２歳Ｓ 国際馬齢
+        # 例：未勝利 馬齢
+        # 例：新馬 馬齢
+        known_classes = [
+            "新馬", "未勝利", "１勝クラス", "2勝クラス",
+            "３勝クラス", "オープン", "馬齢", "定量",
+            "別定", "国際", "牝"
+        ]
+
+        tokens = info_line.split()
+        name_tokens = []
+        class_tokens = []
+
+        for token in tokens:
+            if any(value in token for value in known_classes):
+                class_tokens.append(token)
+            else:
+                name_tokens.append(token)
+
+        race_name = " ".join(name_tokens)
+        class_info = " ".join(class_tokens)
+
     runner_line = next(
         (line for line in block if "頭" in line and "番" in line),
         ""
@@ -115,7 +152,10 @@ def parse_race(block, horse, source_file):
         )
 
         if match:
-            runners, gate, popularity, jockey, carried_weight, body_weight = match.groups()
+            (
+                runners, gate, popularity, jockey,
+                carried_weight, body_weight
+            ) = match.groups()
 
     track_line = next(
         (line for line in block if re.search(r"(芝|ダート|ダ)\s*\d+", line)),
@@ -141,8 +181,7 @@ def parse_race(block, horse, source_file):
             time = time_match.group(1)
             positions = track_line[time_match.end():].strip()
 
-    # 元のPDFでは「36.5 S 33.7」のような表記
-    # 数値の意味を確定できるまでは元データとして保存する
+    # 数値の意味を断定せず、元の表示値として保存
     pace_line = next(
         (
             line for line in block
@@ -156,10 +195,12 @@ def parse_race(block, horse, source_file):
         pace_line
     )
 
-    first3f = pace = last3f = ""
+    lap_value_1 = ""
+    pace_type = ""
+    lap_value_2 = ""
 
     if pace_match:
-        first3f, pace, last3f = pace_match.groups()
+        lap_value_1, pace_type, lap_value_2 = pace_match.groups()
 
     return {
         "source_file": source_file,
@@ -168,7 +209,9 @@ def parse_race(block, horse, source_file):
         "date": date,
         "track": track,
         "race_number": race_number,
+        "race_name": race_name,
         "race_class": race_class,
+        "class_info": class_info,
         "finish": finish,
         "runners": runners,
         "gate": gate,
@@ -181,9 +224,9 @@ def parse_race(block, horse, source_file):
         "going": going,
         "time": time,
         "positions": positions,
-        "first3f": first3f,
-        "pace": pace,
-        "last3f": last3f,
+        "lap_value_1": lap_value_1,
+        "pace_type": pace_type,
+        "lap_value_2": lap_value_2,
         "pace_raw": pace_line,
         "raw_run": "\n".join(block)
     }
@@ -209,7 +252,7 @@ def main():
         print(f"検出馬数: {len(horses)}")
 
         for horse in horses:
-            blocks = split_races(horse["raw_text"].splitlines())
+            blocks = split_races(horse["raw_text"])
 
             print(f"{horse['horse_name']}: {len(blocks)}走")
 
@@ -217,8 +260,15 @@ def main():
                 result = parse_race(block, horse, text_file.name)
 
                 if result:
-                    required = ["date", "track", "finish", "distance", "going", "time"]
-                    missing = [key for key in required if not result[key]]
+                    required = [
+                        "date", "track", "finish",
+                        "distance", "going", "time"
+                    ]
+
+                    missing = [
+                        key for key in required
+                        if not result[key]
+                    ]
 
                     result["parse_status"] = (
                         "check_required" if missing else "parsed"
@@ -230,15 +280,20 @@ def main():
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
-        "source_file", "horse_name", "sire", "date", "track",
-        "race_number", "race_class", "finish", "runners", "gate",
-        "popularity", "jockey", "carried_weight", "body_weight",
-        "surface", "distance", "going", "time", "positions",
-        "first3f", "pace", "last3f", "pace_raw",
+        "source_file", "horse_name", "sire",
+        "date", "track", "race_number",
+        "race_name", "race_class", "class_info",
+        "finish", "runners", "gate", "popularity",
+        "jockey", "carried_weight", "body_weight",
+        "surface", "distance", "going", "time",
+        "positions", "lap_value_1", "pace_type",
+        "lap_value_2", "pace_raw",
         "parse_status", "missing_fields", "raw_run"
     ]
 
-    with OUTPUT_FILE.open("w", encoding="utf-8-sig", newline="") as file:
+    with OUTPUT_FILE.open(
+        "w", encoding="utf-8-sig", newline=""
+    ) as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
