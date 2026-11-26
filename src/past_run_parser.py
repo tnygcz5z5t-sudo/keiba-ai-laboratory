@@ -66,7 +66,7 @@ def split_races(lines):
         elif current:
             # 休養・鉄砲・2走目の情報は過去走ブロックから除外
             if (
-                re.search(r"\d+ヵ月休養", stripped)
+                re.search(r"\d+ヵ月(?:半)?休養", stripped)
                 or stripped.startswith("鉄砲")
                 or stripped.startswith("2走目")
             ):
