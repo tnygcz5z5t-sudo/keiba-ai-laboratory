@@ -11,17 +11,23 @@ IMAGE_DIR = Path("data/official_page_images")
 DPI = 300
 
 
-def main():
-    print("================================", flush=True)
-    print("JRA公式レース結果 PDF・OCR監査", flush=True)
-    print("VERSION: 2026-11-27-04", flush=True)
-    print("================================", flush=True)
+def run_ocr(image_path):
+    image = Image.open(image_path)
 
-    if not INPUT_DIR.exists():
-        raise FileNotFoundError(f"PDFフォルダがありません: {INPUT_DIR}")
+    return pytesseract.image_to_string(
+        image,
+        lang="jpn",
+        config="--psm 6"
+    )
+
+
+def main():
+    print("================================")
+    print("JRA公式レース結果・レース別OCR")
+    print("VERSION: 2026-11-27-05")
+    print("================================")
 
     pdf_files = sorted(INPUT_DIR.glob("*.pdf"))
-    print(f"検出PDF数: {len(pdf_files)}", flush=True)
 
     if not pdf_files:
         raise FileNotFoundError("PDFがありません")
@@ -29,21 +35,19 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-    total_pages = 0
+    total_races = 0
 
     for pdf_path in pdf_files:
-        print("\n--------------------------------", flush=True)
-        print(f"対象ファイル: {pdf_path.name}", flush=True)
+        print(f"\n対象ファイル: {pdf_path.name}")
 
         document = pymupdf.open(str(pdf_path))
+        output_lines = []
+
         image_folder = IMAGE_DIR / pdf_path.stem
         image_folder.mkdir(parents=True, exist_ok=True)
 
-        ocr_text = []
-
         for page_index, page in enumerate(document):
             page_number = page_index + 1
-            total_pages += 1
 
             pixmap = page.get_pixmap(
                 dpi=DPI,
@@ -51,50 +55,59 @@ def main():
                 alpha=False
             )
 
-            image_path = image_folder / f"page_{page_number:03d}.png"
-            pixmap.save(str(image_path))
+            full_image_path = image_folder / f"page_{page_number:03d}.png"
+            pixmap.save(str(full_image_path))
 
-            print(
-                f"画像保存: {image_path} "
-                f"({pixmap.width}x{pixmap.height})",
-                flush=True
-            )
+            image = Image.open(full_image_path)
+            width, height = image.size
 
-            image = Image.open(image_path)
+            # ページ中央で左右のレースを分割
+            regions = {
+                "left": (0, 0, width // 2, height),
+                "right": (width // 2, 0, width, height),
+            }
 
-            text = pytesseract.image_to_string(
-                image,
-                lang="jpn",
-                config="--psm 6"
-            )
+            for side, coordinates in regions.items():
+                cropped = image.crop(coordinates)
 
-            ocr_text.append(
-                f"\n--- PAGE {page_number} ---\n{text}"
-            )
+                crop_path = (
+                    image_folder /
+                    f"page_{page_number:03d}_{side}.png"
+                )
 
-            print(
-                f"OCR完了: ページ {page_number} "
-                f"{len(text)}文字",
-                flush=True
-            )
+                cropped.save(crop_path)
+
+                text = run_ocr(crop_path)
+
+                output_lines.append(
+                    f"\n--- PAGE {page_number} {side.upper()} ---\n"
+                )
+                output_lines.append(text)
+
+                total_races += 1
+
+                print(
+                    f"OCR完了: ページ{page_number} "
+                    f"{side} {len(text)}文字"
+                )
 
         document.close()
 
-        result = "\n".join(ocr_text)
+        output_path = (
+            OUTPUT_DIR /
+            f"{pdf_path.stem}_race_ocr.txt"
+        )
 
-        output_path = OUTPUT_DIR / f"{pdf_path.stem}_ocr.txt"
-        output_path.write_text(result, encoding="utf-8")
+        output_path.write_text(
+            "\n".join(output_lines),
+            encoding="utf-8"
+        )
 
-        print(f"OCR保存先: {output_path}", flush=True)
-        print("\n【OCR先頭2000文字】", flush=True)
-        print(result[:2000], flush=True)
+        print(f"保存先: {output_path}")
 
-    print("\n================================", flush=True)
-    print("OCR監査結果まとめ", flush=True)
-    print(f"PDF数: {len(pdf_files)}", flush=True)
-    print(f"総ページ数: {total_pages}", flush=True)
-    print("OCR処理完了", flush=True)
-    print("================================", flush=True)
+    print("\n================================")
+    print(f"OCR処理完了: {total_races}領域")
+    print("================================")
 
 
 if __name__ == "__main__":
