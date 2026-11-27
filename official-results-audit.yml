@@ -1,32 +1,73 @@
 
-name: JRA Official Results Audit
+from pathlib import Path
+from pypdf import PdfReader
 
-on:
-  workflow_dispatch:
+INPUT_DIR = Path("data/raw_pdfs")
+OUTPUT_DIR = Path("data/official_extracted_text")
 
-jobs:
-  audit:
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+def main():
+    print("================================")
+    print("JRA公式レース結果PDF 監査")
+    print("================================")
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+    pdf_files = list(
+        INPUT_DIR.glob("2026-4tokyo2.pdf")
+    )
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+    if not pdf_files:
+        raise FileNotFoundError(
+            "2026-4tokyo2.pdf が見つかりません"
+        )
 
-      - name: Audit official results PDF
-        run: |
-          python src/official_results_audit.py
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-      - name: Upload extracted text
-        uses: actions/upload-artifact@v4
-        with:
-          name: official-results-audit
-          path: data/official_extracted_text/
+    for pdf_path in pdf_files:
+        print(f"\n対象ファイル: {pdf_path.name}")
+
+        reader = PdfReader(str(pdf_path))
+
+        print(f"ページ数: {len(reader.pages)}")
+
+        all_text = []
+
+        for page_number, page in enumerate(
+            reader.pages,
+            start=1
+        ):
+            text = page.extract_text() or ""
+
+            all_text.append(
+                f"\n--- PAGE {page_number} ---\n{text}"
+            )
+
+            print(
+                f"ページ {page_number}: "
+                f"{len(text)}文字"
+            )
+
+        result = "\n".join(all_text)
+
+        output_path = OUTPUT_DIR / (
+            pdf_path.stem + ".txt"
+        )
+
+        output_path.write_text(
+            result,
+            encoding="utf-8"
+        )
+
+        print(f"\n抽出文字数: {len(result)}")
+        print(f"保存先: {output_path}")
+
+        print("\n【先頭3000文字】")
+        print(result[:3000])
+
+    print("\n監査完了")
+
+
+if __name__ == "__main__":
+    main()
