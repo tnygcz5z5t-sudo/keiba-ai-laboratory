@@ -45,6 +45,10 @@ jobs:
         run: |
           python src/model_dataset.py
 
+      - name: Validate model dataset
+        run: |
+          python src/dataset_validator.py
+
       - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
