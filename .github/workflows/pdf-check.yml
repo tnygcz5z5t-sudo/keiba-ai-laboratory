@@ -41,6 +41,10 @@ jobs:
         run: |
           python src/speed_feature.py
 
+      - name: Generate model dataset
+        run: |
+          python src/model_dataset.py
+
       - name: Upload extracted data
         uses: actions/upload-artifact@v4
         with:
@@ -51,3 +55,4 @@ jobs:
             data/past_runs.csv
             data/speed_features.csv
             data/horse_speed_summary.csv
+            data/model_dataset.csv
