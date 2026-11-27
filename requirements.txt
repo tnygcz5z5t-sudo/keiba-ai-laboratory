@@ -5,3 +5,4 @@ statsmodels>=0.14.0
 scikit-learn>=1.3.0
 pypdf>=5.0.0
 fontTools>=4.50.0
+pymupdf>=1.24.0
