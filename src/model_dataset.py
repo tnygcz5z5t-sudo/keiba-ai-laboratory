@@ -5,8 +5,8 @@ import pandas as pd
 INPUT_FILE = Path("data/past_runs.csv")
 OUTPUT_FILE = Path("data/model_dataset.csv")
 
-# レース後に判明する情報。
-# これらは予測特徴量には使用しない。
+# 予測時点では分からない情報
+# 学習特徴量には使用しない
 LEAKAGE_COLUMNS = [
     "finish",
     "time",
@@ -38,10 +38,12 @@ def main():
 
     required = [
         "horse_name",
+        "date",
+        "track",
+        "race_number",
         "finish",
         "distance",
         "surface",
-        "track",
         "going",
     ]
 
@@ -61,10 +63,11 @@ def main():
         errors="coerce"
     )
 
-    # 着順が数値でないデータは除外
-    df = df.dropna(subset=["finish"]).copy()
+    df = df.dropna(
+        subset=["finish"]
+    ).copy()
 
-    # 予測対象を作成
+    # 正解ラベル
     df["target_win"] = (
         df["finish"] == 1
     ).astype(int)
@@ -101,47 +104,39 @@ def main():
         "sire",
     ]
 
-    # 予測に使う特徴量を選択
     feature_columns = [
-        col for col in
-        numeric_features + categorical_features
+        col for col in (
+            numeric_features
+            + categorical_features
+        )
         if col in df.columns
     ]
 
-    # 馬名・日付などは管理用として残す
+    # 管理情報
     management_columns = [
         col for col in [
             "date",
+            "track",
+            "race_number",
             "horse_name",
             "source_file",
         ]
         if col in df.columns
     ]
 
+    # 出力列
     output_columns = (
         management_columns
         + feature_columns
-        + ["target_win", "target_top3"]
+        + [
+            "target_win",
+            "target_top3",
+        ]
     )
 
-    dataset = df[output_columns].copy()
-
-    # 特徴量と正解ラベルが揃わない行を確認
-    print(f"対象レース数: {len(dataset)}")
-    print(
-        f"勝利データ: "
-        f"{dataset['target_win'].sum()}件"
-    )
-    print(
-        f"3着以内データ: "
-        f"{dataset['target_top3'].sum()}件"
-    )
-
-    print("\n【使用しない情報】")
-    print(", ".join(LEAKAGE_COLUMNS))
-
-    print("\n【使用する特徴量】")
-    print(", ".join(feature_columns))
+    dataset = df[
+        list(dict.fromkeys(output_columns))
+    ].copy()
 
     OUTPUT_FILE.parent.mkdir(
         parents=True,
@@ -154,6 +149,40 @@ def main():
         encoding="utf-8-sig"
     )
 
+    # 結果表示
+    print(f"対象データ数: {len(dataset)}")
+
+    print(
+        f"勝利データ: "
+        f"{dataset['target_win'].sum()}件"
+    )
+
+    print(
+        f"3着以内データ: "
+        f"{dataset['target_top3'].sum()}件"
+    )
+
+    print("\n【レース識別情報】")
+    print(
+        "日付・競馬場・レース番号を保持"
+    )
+
+    race_groups = dataset.groupby(
+        ["date", "track", "race_number"],
+        dropna=False
+    )
+
+    print(
+        f"識別できたレース数: "
+        f"{len(race_groups)}"
+    )
+
+    print("\n【学習特徴量】")
+    print(", ".join(feature_columns))
+
+    print("\n【除外する情報】")
+    print(", ".join(LEAKAGE_COLUMNS))
+
     print("\n================================")
     print("データセット生成完了")
     print(f"保存先: {OUTPUT_FILE}")
@@ -161,8 +190,8 @@ def main():
 
     if len(dataset) < 1000:
         print(
-            "注意: 現在のデータ量では"
-            "本格的なモデル学習には不足しています。"
+            "注意: 本格的な学習には"
+            "データ不足です。"
         )
 
 
