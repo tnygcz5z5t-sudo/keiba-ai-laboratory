@@ -11,13 +11,18 @@ def main():
     print("JRA公式レース結果PDF 監査")
     print("================================")
 
-    pdf_files = list(
-        INPUT_DIR.glob("2026-4tokyo2.pdf")
-    )
+    print(f"検索フォルダ: {INPUT_DIR.resolve()}")
+
+    pdf_files = list(INPUT_DIR.glob("*.pdf"))
+
+    print(f"検出PDF数: {len(pdf_files)}")
+
+    for file in pdf_files:
+        print(f"検出ファイル: {file.name}")
 
     if not pdf_files:
         raise FileNotFoundError(
-            "2026-4tokyo2.pdf が見つかりません"
+            "data/raw_pdfs 内にPDFがありません"
         )
 
     OUTPUT_DIR.mkdir(
@@ -60,7 +65,7 @@ def main():
             encoding="utf-8"
         )
 
-        print(f"\n抽出文字数: {len(result)}")
+        print(f"抽出文字数: {len(result)}")
         print(f"保存先: {output_path}")
 
         print("\n【先頭3000文字】")
