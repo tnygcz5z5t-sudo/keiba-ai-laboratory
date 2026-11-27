@@ -21,6 +21,18 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Extract PDF text
+        run: |
+          python src/pdf_loader.py
+
+      - name: Parse PDF text
+        run: |
+          python src/pdf_parser.py
+
+      - name: Parse past runs
+        run: |
+          python src/past_run_parser.py
+
       - name: Audit race data
         run: |
           python src/race_data_audit.py
