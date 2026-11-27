@@ -17,6 +17,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-jpn
+          tesseract --version
+          tesseract --list-langs
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -29,4 +36,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: official-results-audit
-          path: data/official_extracted_text/
+          path: |
+            data/official_extracted_text/
+            data/official_page_images/
