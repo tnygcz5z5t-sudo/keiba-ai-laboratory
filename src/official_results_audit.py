@@ -1,90 +1,57 @@
 
 from pathlib import Path
-from pypdf import PdfReader
-import fitz
+import pymupdf
+import pytesseract
+from PIL import Image
 
 INPUT_DIR = Path("data/raw_pdfs")
 OUTPUT_DIR = Path("data/official_extracted_text")
 IMAGE_DIR = Path("data/official_page_images")
 
-DPI = 200
+DPI = 300
 
 
 def main():
     print("================================", flush=True)
-    print("JRA公式レース結果PDF 監査", flush=True)
-    print("VERSION: 2026-11-27-03", flush=True)
+    print("JRA公式レース結果 PDF・OCR監査", flush=True)
+    print("VERSION: 2026-11-27-04", flush=True)
     print("================================", flush=True)
 
-    print(f"作業ディレクトリ: {Path.cwd()}", flush=True)
-
     if not INPUT_DIR.exists():
-        raise FileNotFoundError(
-            f"PDFフォルダがありません: {INPUT_DIR}"
-        )
+        raise FileNotFoundError(f"PDFフォルダがありません: {INPUT_DIR}")
 
     pdf_files = sorted(INPUT_DIR.glob("*.pdf"))
     print(f"検出PDF数: {len(pdf_files)}", flush=True)
 
     if not pdf_files:
-        raise FileNotFoundError(
-            "data/raw_pdfs 内にPDFがありません"
-        )
+        raise FileNotFoundError("PDFがありません")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     total_pages = 0
-    total_characters = 0
 
     for pdf_path in pdf_files:
         print("\n--------------------------------", flush=True)
         print(f"対象ファイル: {pdf_path.name}", flush=True)
 
-        # 従来のテキスト抽出
-        reader = PdfReader(str(pdf_path))
-        page_count = len(reader.pages)
-        total_pages += page_count
-
-        all_text = []
-
-        for page_number, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
-            all_text.append(
-                f"\n--- PAGE {page_number} ---\n{text}"
-            )
-
-            print(
-                f"ページ {page_number}: {len(text)}文字",
-                flush=True
-            )
-
-        result = "\n".join(all_text)
-        output_path = OUTPUT_DIR / f"{pdf_path.stem}.txt"
-        output_path.write_text(result, encoding="utf-8")
-
-        total_characters += len(result)
-
-        print(f"テキスト保存先: {output_path}", flush=True)
-
-        # PyMuPDFによるページ画像化
+        document = pymupdf.open(str(pdf_path))
         image_folder = IMAGE_DIR / pdf_path.stem
         image_folder.mkdir(parents=True, exist_ok=True)
 
-        document = fitz.open(str(pdf_path))
-        zoom = DPI / 72
-        matrix = fitz.Matrix(zoom, zoom)
+        ocr_text = []
 
         for page_index, page in enumerate(document):
+            page_number = page_index + 1
+            total_pages += 1
+
             pixmap = page.get_pixmap(
-                matrix=matrix,
+                dpi=DPI,
+                colorspace=pymupdf.csRGB,
                 alpha=False
             )
 
-            image_path = (
-                image_folder / f"page_{page_index + 1:03d}.png"
-            )
-
+            image_path = image_folder / f"page_{page_number:03d}.png"
             pixmap.save(str(image_path))
 
             print(
@@ -93,17 +60,40 @@ def main():
                 flush=True
             )
 
+            image = Image.open(image_path)
+
+            text = pytesseract.image_to_string(
+                image,
+                lang="jpn",
+                config="--psm 6"
+            )
+
+            ocr_text.append(
+                f"\n--- PAGE {page_number} ---\n{text}"
+            )
+
+            print(
+                f"OCR完了: ページ {page_number} "
+                f"{len(text)}文字",
+                flush=True
+            )
+
         document.close()
 
-        print(f"ページ数: {page_count}", flush=True)
-        print(f"抽出文字数: {len(result)}", flush=True)
+        result = "\n".join(ocr_text)
+
+        output_path = OUTPUT_DIR / f"{pdf_path.stem}_ocr.txt"
+        output_path.write_text(result, encoding="utf-8")
+
+        print(f"OCR保存先: {output_path}", flush=True)
+        print("\n【OCR先頭2000文字】", flush=True)
+        print(result[:2000], flush=True)
 
     print("\n================================", flush=True)
-    print("監査結果まとめ", flush=True)
+    print("OCR監査結果まとめ", flush=True)
     print(f"PDF数: {len(pdf_files)}", flush=True)
     print(f"総ページ数: {total_pages}", flush=True)
-    print(f"総抽出文字数: {total_characters}", flush=True)
-    print("PDF画像化完了", flush=True)
+    print("OCR処理完了", flush=True)
     print("================================", flush=True)
 
 
